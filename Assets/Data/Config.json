@@ -1,0 +1,12 @@
+{
+    "resolution": 9,
+    "framerate": 6000,
+    "fullscreen": true,
+    "vsync": true,
+    "colorBlind": 0,
+    "colorBlindDiffrence": false,
+    "colorBlindSeverity": 1.0,
+    "musicVolume": 10.0,
+    "effectVolume": 10.0,
+    "voiceVolume": 10.0
+}

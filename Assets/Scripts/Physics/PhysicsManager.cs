@@ -244,6 +244,12 @@ namespace Decel
             var r1 = _bodyData[index].attractor.bodyData.position - position;
             acceleration += r1.normalized * Constant.G * _bodyData[index].attractor.bodyData.mass / r1.sqrMagnitude;
 
+            //acceleration += (0.5f * _bodyData[index].atmosphereicDesity * (_bodyData[index].airSpeed * _bodyData[index].airSpeed) 
+            //* _bodyData[index].dragCoefficent * _bodyData[index].crossSectionalArea) / _bodyData[index].mass
+
+            //acceleration += (0.5f * _bodyData[index].atmosphereicDesity * (_bodyData[index].airSpeed * _bodyData[index].airSpeed) * _bodyData[index].liftCoefficent 
+            //* _bodyData[index].wingCrossSectionalArea) / _bodyData[index].mass
+
             return acceleration;
         }
 

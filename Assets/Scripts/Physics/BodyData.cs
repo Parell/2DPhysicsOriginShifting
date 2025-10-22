@@ -34,6 +34,7 @@ namespace Decel
         double WrapPi(double a) { a = System.Math.IEEERemainder(a, 2.0 * Mathd.PI); return (a <= -Mathd.PI) ? a + 2.0 * Mathd.PI : (a > Mathd.PI ? a - 2.0 * Mathd.PI : a); }
         double Sinh(double a) { return (Mathd.Exp(a) - Mathd.Exp(-a)) * 0.5; }
         double Cosh(double a) { return (Mathd.Exp(a) + Mathd.Exp(-a)) * 0.5; }
+        double Asinh(double a) { return Mathd.Log(a + Mathd.Sqrt(a * a + 1)); }
 
         public void CartesianToKeplerian()
         {
@@ -74,52 +75,51 @@ namespace Decel
             }
 
             // True anomaly f
-            double cosf, sinf, f;
+            double cosf, sinf, nu;
             if (e > eccentricityTolerance)
             {
                 cosf = Vector2d.Dot(evec, relitivePosition) / (e * r);
                 cosf = Mathd.Clamp(cosf, -1.0, 1.0);
                 sinf = Vector2d.Cross(evec, relitivePosition) / (e * r);
-                f = Mathd.Atan2(sinf, cosf);
+                nu = Mathd.Atan2(sinf, cosf);
             }
             else
             {
                 // circular: f = argument of position vector
-                f = Mathd.Atan2(relitivePosition.y, relitivePosition.x);
+                nu = Mathd.Atan2(relitivePosition.y, relitivePosition.x);
             }
 
             // Mean anomaly at epoch M0
             if (e < 1.0)
             {
-                double cosE = (e + Mathd.Cos(f)) / (1.0 + e * Mathd.Cos(f));
+                double cosE = (e + Mathd.Cos(nu)) / (1.0 + e * Mathd.Cos(nu));
                 cosE = Mathd.Clamp(cosE, -1.0, 1.0);
-                double sinE = Mathd.Sqrt(1.0 - e * e) * Mathd.Sin(f) / (1.0 + e * Mathd.Cos(f));
+                double sinE = Mathd.Sqrt(1.0 - e * e) * Mathd.Sin(nu) / (1.0 + e * Mathd.Cos(nu));
                 double E = Mathd.Atan2(sinE, cosE);
                 M = WrapPi(E - e * Mathd.Sin(E));
             }
             else
             {
-                double denom = 1.0 + e * Mathd.Cos(f);
+                double denom = 1.0 + e * Mathd.Cos(nu);
                 // Avoid division by ~0 near asymptotes
                 if (Mathd.Abs(denom) < 1e-12) { denom = Mathd.Sign(denom) * 1e-12; }
-                double sinhH = Mathd.Sqrt(e * e - 1.0) * Mathd.Sin(f) / denom;
+                double sinhH = Mathd.Sqrt(e * e - 1.0) * Mathd.Sin(nu) / denom;
                 double H = Mathd.Log(sinhH + Mathd.Sqrt(sinhH * sinhH + 1.0));
                 M = e * sinhH - H; // hyperbolic mean anomaly
             }
 
-            sphereOfInfluence = 0.9431 * a * Mathd.Pow(mass / attractor.bodyData.mass, 0.4);
+            sphereOfInfluence = 0.9431 * Mathd.Abs(a) * Mathd.Pow(mass / attractor.bodyData.mass, 0.4);
         }
 
-        public void KeplerianToCartesian(out Vector2d relitivePosition, out Vector2d relitiveVelocity)
+        public (Vector2d position, Vector2d velocity) KeplerianToCartesian(double deltaTime)
         {
             double mu = attractor.bodyData.mass * Constant.G;
-            double dt = PhysicsManager.deltaTime;
 
             if (e < 1.0)
             {
                 // Elliptic
                 double n = Mathd.Sqrt(mu / (a * a * a));
-                M = WrapPi(M + n * dt);
+                M = WrapPi(M + n * deltaTime);
 
                 // Solve Kepler for E (Newton)
                 double E = M;
@@ -140,59 +140,52 @@ namespace Decel
 
                 // Rotate by ω
                 double c = Mathd.Cos(w), s = Mathd.Sin(w);
-                relitivePosition = attractor.bodyData.position - new Vector2d(c * x_pf - s * y_pf, s * x_pf + c * y_pf);
-                relitiveVelocity = attractor.bodyData.velocity - new Vector2d(c * vx_pf - s * vy_pf, s * vx_pf + c * vy_pf);
+                return (attractor.bodyData.position - new Vector2d(c * x_pf - s * y_pf, s * x_pf + c * y_pf),
+attractor.bodyData.velocity - new Vector2d(c * vx_pf - s * vy_pf, s * vx_pf + c * vy_pf));
             }
             else
             {
-                // Hyperbolic
-                double aAbs = Mathd.Abs(a);
-                double n = Mathd.Sqrt(mu / (aAbs * aAbs * aAbs)); // "mean motion" magnitude
-                M = M + n * dt;              // hyperbolic mean anomaly
-                double f;
+                // Mean motion and mean anomaly
+                double n = Mathd.Sqrt(mu / (-a * a * a));
+                M = M + n * deltaTime;
+                double sH, cH;
 
-                // Solve hyperbolic Kepler: e*sinhH - H = M
-                double H = Mathd.Log(2.0 * Mathd.Abs(M) / e + 1.8); // good starter
-                for (int i = 0; i < 20; i++)
+                // Solve Kepler for hyperbola: e*sinhH - H = M  (Halley)
+                //double H = Mathd.Sign(M) * Mathd.Log(2.0 * Mathd.Abs(M) / e + 1.8);
+                double H = Asinh(M / e);
+                for (int i = 0; i < 30; i++)
                 {
-                    double sH = Sinh(H), cH = Cosh(H);
-                    f = e * sH - H - M;
+                    sH = System.Math.Sinh(H);
+                    cH = System.Math.Cosh(H);
+                    double f = e * sH - H - M;
                     double fp = e * cH - 1.0;
-                    double fpp = e * sH;
-                    // Halley for robustness
-                    double dH = 2 * f * fp / (2 * fp * fp - f * fpp);
-                    H -= dH;
-                    if (Mathd.Abs(dH) < 1e-12) break;
+                    //double fpp = e * sH;
+                    //double denom = 2.0 * fp * fp - f * fpp;
+                    //double dH = 2.0 * f * fp / denom;
+                    //H -= dH;
+                    double dH = -f / fp;
+                    H += dH;
+                    if (Mathd.Abs(dH) < 1e-13) break;
                 }
-                double cH2 = Cosh(H), sH2 = Sinh(H);
-                double r = a * (1.0 - e * cH2); // note: a<0, r>0
-                double x_pf = a * (cH2 - e);
-                double y_pf = a * Mathd.Sqrt(e * e - 1.0) * sH2;
-                double p = a * (1.0 - e * e); // negative
-                double vscale = Mathd.Sqrt(mu / Mathd.Abs(p));
-                // True anomaly from H (for velocity direction)
-                double cosf = (cH2 - e) / (1.0 - e * cH2);
-                double sinf = Mathd.Sqrt(e * e - 1.0) * sH2 / (1.0 - e * cH2);
-                f = Mathd.Atan2(sinf, cosf);
-                double vx_pf = -vscale * Mathd.Sin(f);
-                double vy_pf = vscale * (e + Mathd.Cos(f));
+
+                double tanhH2 = Sinh(0.5 * H) / Cosh(0.5 * H);
+                double k = Mathd.Sqrt((e + 1.0) / (e - 1.0));
+                double nu = 2.0 * Mathd.Atan(k * tanhH2);
+
+                double p = a * (1.0 - e * e);
+                double cnu = Mathd.Cos(nu), snu = Mathd.Sin(nu);
+                double rmag = p / (1.0 + e * cnu);
+
+                double x_pf = rmag * cnu;
+                double y_pf = rmag * snu;
+                double fac = Mathd.Sqrt(mu / p);
+                double vx_pf = fac * (-snu);
+                double vy_pf = fac * (e + cnu);
 
                 double c = Mathd.Cos(w), s = Mathd.Sin(w);
-                relitivePosition = attractor.bodyData.position - new Vector2d(c * x_pf - s * y_pf, s * x_pf + c * y_pf);
-                relitiveVelocity = attractor.bodyData.velocity - new Vector2d(c * vx_pf - s * vy_pf, s * vx_pf + c * vy_pf);
+                return (attractor.bodyData.position - new Vector2d(c * x_pf - s * y_pf, s * x_pf + c * y_pf),
+attractor.bodyData.velocity - new Vector2d(c * vx_pf - s * vy_pf, s * vx_pf + c * vy_pf));
             }
         }
-
-        // // ---- Convenience: re-Keplerize at SOI swap ----
-        // // vessel_bary: barycentric; newPrimary_bary: barycentric (both at t_s)
-        // public static Orbit2D RecomputeKeplerAtSwap(
-        //     dvec2 vessel_pos_km, dvec2 vessel_vel_kms,
-        //     dvec2 newPrimary_pos_km, dvec2 newPrimary_vel_kms,
-        //     double mu_newPrimary, double t_s)
-        // {
-        //     dvec2 rRel = new dvec2(vessel_pos_km.x - newPrimary_pos_km.x, vessel_pos_km.y - newPrimary_pos_km.y);
-        //     dvec2 vRel = new dvec2(vessel_vel_kms.x - newPrimary_vel_kms.x, vessel_vel_kms.y - newPrimary_vel_kms.y);
-        //     return CartesianToKepler2D(rRel, vRel, mu_newPrimary, t_s);
-        // }
     }
 }

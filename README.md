@@ -1,214 +1,26 @@
-Make thruster allocator for 2D ships
-Make a efficent way of loading vehicals form memory
+- Physics manager random orbit generator
+- Spawn over 1000 Random bodies in a system, test
+- Spawn asteroid feild with range based orbital paramerters
 
-When in load range put object on keplerian propagation and get the visuals ready to display, when in physics range, complete visual loading and switch to rigidbody based orbits and get the force based on the gravitational force, if main body offset velocity and position to root bodies stars and bodies in physics range, other bodies just follow propagation.
-All objects in scene but disabled when in unload range, star is a kinimatic body. 
+- Econemy manager, manages all locations
+- Conflict score around locations, if too high ai will move away and it will be hard to live buy fuel and stay in that area so people move away for more reasources
 
-Patch conics search, closest patch you are in?
+- Lambert solver for ship traveling put function on vessel
+- 1k ai doing tasks around the world, ai have a allocation where they do certain things, like likey to buy ore or transport people, group AI into one body when out of range
 
-Delete inclination data from propagator
-
-physics manager random orbit generator
-
-Econemy manager, manages all locations.
-
-Spawn asteroid feild with random orbital paramerters
-Put over 1000 Random bodies in a system
-Test accuracy of hyperbolic trajectories
-Make bullets more simple with simple raycast tests.
-Make modal windows for data
-Make login screen
-make a market economy system
-make a ship inventory
-Quest and game progression, miner, slavager, mercenary, military, companies, fractions, administration.
-Make events like DeltaV rings of saturn
-Make ship costomization with moduals and military moduals are rare finds of war
-This make the game have levels and stats that people can try an min max
-Lambert solver for ship traveling
-10000 ai doing tasks around the world, ai have a allocation where they do certain things, like likey to buy ore or more people
-Have the nearest player do calculations for that AI with a way of spreading out the work to limit server computation
-If the conflict score around a place gets to high ai will move away and it will be hard to live buy fuel and stay in that area so people move away for more reasources
-Guns aim at target but bullets spawn from a flat plane to keep movement 2D
-Increase deltatime when engine is on or acceleration is over a threshold
-Instead of reset velocity and position make a system that flys the world back to zero.
-double tap Q or E to make heat sheild side of craft point to that direction
-
-~~Make and replace Vector3d with Vector2d~~
-~~Physics range, and load range, based on distance + size of bounds.~~
+- Make a efficent way of loading vehicals form memory, disabled when in unload range, star is a kinimatic body. 
+- Make modal windows for data
+- Make login screen
+- make a ship inventory, real objects
+- Quest and game progression, miner, slavager, mercenary, military, companies, fractions, administration.
+- Make events like DeltaV rings of saturn
+- Make ship costomization with moduals and military moduals are rare finds of war
 
 
-
-        public enum Type
-        {
-            Keplerian, Cartesian, KeplerianOrCartesian
-        }
-
-        [System.Serializable]
-        public class KeplerianData
-        {
-            public double a;
-            public double e;
-            public double w;
-            public double m0;
-        }
-
-        private const double EPS_E = 1e-8;      // eccentricity tolerance
-        private const double EPS_PARAB = 1e-6;  // parabolic clamp
-
-        // // ---- Helpers ----
-        // private static double Dot(Vector2d a, Vector2d b) => a.x * b.x + a.y * b.y;
-        // private static double CrossZ(Vector2d a, Vector2d b) => a.x * b.y - a.y * b.x; // z-component (2D)
-        // private static double Norm(Vector2d v) => Mathd.Sqrt(Dot(v, v));
-        // private static double Atan2(double y, double x) => Mathd.Atan2(y, x);
-        // private static double WrapPi(double a) { a = System.Math.IEEERemainder(a, 2.0 * Mathd.PI); return (a <= -Mathd.PI) ? a + 2.0 * Mathd.PI : (a > Mathd.PI ? a - 2.0 * Mathd.PI : a); }
-        // private static double Asinh(double x) => Mathd.Log(x + Mathd.Sqrt(x * x + 1.0));
-
-        public void CartesianToKeplerian(Vector2d position, Vector2d velocity, double time)
-        {
-
-            Vector2d relitivePosition = attractor.bodyData.position - position;
-            Vector2d relitiveVelocity = attractor.bodyData.velocity - velocity;
-            double mu = attractor.bodyData.mass * Constant.G;
-            double r = relitivePosition.magnitude;
-            double v2 = Vector2d.Dot(relitiveVelocity, relitiveVelocity);
-            double rv = Vector2d.Dot(relitivePosition, relitiveVelocity);
-            double h = Vector2d.Cross(relitivePosition, relitiveVelocity);
-            if (Mathd.Abs(h) < 1e-12) { h = Mathd.Sign(h) * 1e-12; }
-
-            Vector2d evec = new Vector2d(
-                ((v2 - mu / r) * relitivePosition.x - rv * relitiveVelocity.x) / mu,
-                ((v2 - mu / r) * relitivePosition.y - rv * relitiveVelocity.y) / mu
-            );
-            double e = evec.magnitude;
-
-            // Clamp near-parabolic to avoid singularities
-            if (Mathd.Abs(e - 1.0) < 1e-6) { e = e < 1.0 ? 1.0 - 1e-6 : 1.0 + 1e-6; }
-
-            // Semi-major axis from vis-viva: 1/a = 2/r - v^2/μ
-            double inva = 2.0 / r - v2 / mu;
-            double a = 1.0 / inva; // negative if hyperbolic
-
-            // Argument of periapsis ω
-            double omega;
-            if (e > EPS_E)
-            {
-                omega = Mathd.Atan2(evec.y, evec.x);
-            }
-            else
-            {
-                // circular: define ω = 0 and carry phase via M0
-                omega = 0.0;
-            }
-
-            // // True anomaly f
-            // double cosf, sinf, f;
-            // if (e > EPS_E)
-            // {
-            //     cosf = (Dot(evec, relitivePosition)) / (e * r);
-            //     cosf = Mathd.Clamp(cosf, -1.0, 1.0);
-            //     sinf = CrossZ(evec, relitivePosition) / (e * r);
-            //     f = Mathd.Atan2(sinf, cosf);
-            // }
-            // else
-            // {
-            //     // circular: f = argument of position vector
-            //     f = Mathd.Atan2(relitivePosition.y, relitivePosition.x);
-            // }
-
-            // // Mean anomaly at epoch M0
-            // double M0;
-            // if (e < 1.0)
-            // {
-            //     // Elliptic
-            //     double cosE = (e + Mathd.Cos(f)) / (1.0 + e * Mathd.Cos(f));
-            //     cosE = Mathd.Clamp(cosE, -1.0, 1.0);
-            //     double sinE = Mathd.Sqrt(1.0 - e * e) * Mathd.Sin(f) / (1.0 + e * Mathd.Cos(f));
-            //     double E = Mathd.Atan2(sinE, cosE);
-            //     M0 = WrapPi(E - e * Mathd.Sin(E));
-            // }
-            // else
-            // {
-            //     // Hyperbolic
-            //     double denom = 1.0 + e * Mathd.Cos(f);
-            //     // Avoid division by ~0 near asymptotes
-            //     if (Mathd.Abs(denom) < 1e-12) denom = Mathd.Sign(denom) * 1e-12;
-            //     double sinhH = Mathd.Sqrt(e * e - 1.0) * Mathd.Sin(f) / denom;
-            //     double H = Asinh(sinhH);
-            //     M0 = e * sinhH - H; // hyperbolic mean anomaly
-            // }
-
-            // //sphereOfInfluence = 0.9431f * semiMajorAxis * Mathd.Pow(mass / attractor.bodyData.mass, 0.4f);
-            // //period = Mathd.Sqrt(4 * (Mathd.PI * Mathd.PI) / mu * Mathd.Pow(semiMajorAxis, 3));
-
-            // semiMajorAxis = a;
-            // eccentricity = e;
-            // argumentOfPeriapsis = WrapPi(omega);
-            // meanAnomalyAtEpoch = M0;
-        }
-
-        // public void KeplerianToCartesian(double time, out Vector2d position, out Vector2d velocity)
-        // {
-        //     double epoch = 0;
-        //     double mu = attractor.bodyData.mass;
-        //     double n = Mathd.Sqrt(mu / (semiMajorAxis * semiMajorAxis * semiMajorAxis));
-        //     double M = meanAnomalyAtEpoch + n * (time - epoch);
-
-        //     // Solve Kepler for E (Newton-Raphson)
-        //     double E = M;
-        //     for (int i = 0; i < 12; i++)
-        //     {
-        //         double f = E - eccentricity * Mathd.Sin(E) - M;
-        //         double fp = 1d - eccentricity * Mathd.Cos(E);
-        //         E -= f / fp;
-        //     }
-
-        //     // True anomaly & radius
-        //     double cosE = Mathd.Cos(E), sinE = Mathd.Sin(E);
-        //     double r = semiMajorAxis * (1d - eccentricity * cosE);
-        //     double cosf = (cosE - eccentricity) / (1d - eccentricity * cosE);
-        //     double sinf = Mathd.Sqrt(1d - eccentricity * eccentricity) * sinE / (1d - eccentricity * cosE);
-        //     double p = semiMajorAxis * (1d - eccentricity * eccentricity);
-
-        //     // Perifocal state
-        //     Vector2d perifocalPosition = new Vector2d(r * cosf, r * sinf);
-        //     double vscale = Mathd.Sqrt(mu / p);
-        //     Vector2d perifocalVelocity = new Vector2d(-vscale * sinf, vscale * (eccentricity + cosf));
-
-        //     // Rotate by argument of periapsis (2D)
-        //     double c = Mathd.Cos(argumentOfPeriapsis), s = Mathd.Sin(argumentOfPeriapsis);
-        //     position = new Vector2d(c * perifocalPosition.x - s * perifocalPosition.y, s * perifocalPosition.x + c * perifocalPosition.y);
-        //     velocity = new Vector2d(c * perifocalVelocity.x - s * perifocalVelocity.y, s * perifocalVelocity.x + c * perifocalVelocity.y);
-        // }
-
-        // public void BarycentricKeplerianToCartesian(double time, out Vector2d position, out Vector2d velocity)
-        // {
-        //     if (attractor == null) { position = new Vector2d(0, 0); velocity = new Vector2d(0, 0); return; }
-        //     attractor.bodyData.BarycentricKeplerianToCartesian(time, out var attractorPosition, out var attractorVelocitu);
-        //     KeplerianToCartesian(time, out var relitivePosition, out var relitiveVelocity);
-        //     position = attractorPosition + relitivePosition;
-        //     velocity = attractorVelocitu + relitiveVelocity;
-        // }
-
-
-            //acceleration += (0.5f * _bodyData[index].atmosphereicDesity * (_bodyData[index].airSpeed * _bodyData[index].airSpeed) 
-            //* _bodyData[index].dragCoefficent * _bodyData[index].crossSectionalArea) / _bodyData[index].mass
-
-            //acceleration += (0.5f * _bodyData[index].atmosphereicDesity * (_bodyData[index].airSpeed * _bodyData[index].airSpeed) * _bodyData[index].liftCoefficent 
-            //* _bodyData[index].wingCrossSectionalArea) / _bodyData[index].mass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+- Guns aim at target but bullets spawn from a flat plane to keep movement 2D
+- Increase deltatime when engine is on or acceleration is over a threshold
+- Instead of reset velocity and position make a system that flys the world back to zero.
+- double tap Q or E to make heat sheild side of craft point to that direction
 
 
 

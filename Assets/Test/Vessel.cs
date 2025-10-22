@@ -1,14 +1,14 @@
-using System;
 using UnityEngine;
 
 namespace Decel
 {
+    // decides were to point and were to go.
     public class Vessel : MonoBehaviour
     {
         public bool player;
         public bool controlable;
-        private float tapSpeed = 0.3f;
         //private bool retrograde;
+        private float tapSpeed = 0.3f;
         private float lastTapTime;
         private bool isHolding;
         private float holdTimer;
@@ -38,14 +38,14 @@ namespace Decel
             {
                 if (!isHolding)
                 {
-                    // if (mover.mainThrusterThrottle > 0)
-                    // {
-                    //     mover.mainThrusterThrottle = 2;
-                    // }
-                    // else
-                    // {
-                    //     //mover.mainThrusterThrottle = 0;
-                    // }
+                    if (mover.mainThruster > 0)
+                    {
+                        mover.mainThruster = 0;
+                    }
+                    else
+                    {
+                        mover.mainThruster = 1;
+                    }
                 }
             }
 
@@ -55,9 +55,7 @@ namespace Decel
                 if (holdTimer >= holdTime && !isHolding)
                 {
                     isHolding = true;
-                    // mover.mainThruster.acceleration = 100;
-                    // mover.mainThruster.Calculate(body.bodyData.mass);
-                    //mover.mainThrusterThrottle = 2;
+                    mover.mainThruster = 2;
                 }
             }
 
@@ -67,10 +65,7 @@ namespace Decel
                 {
                     holdTimer = 0f;
                     isHolding = false;
-                    // mover.mainThruster.acceleration = 10;
-                    // mover.mainThruster.Calculate(body.bodyData.mass);
-                    // mover.mainEngine = false;
-                    //mover.mainThrusterThrottle = 0;
+                    mover.mainThruster = 0;
                 }
             }
 
@@ -120,6 +115,22 @@ namespace Decel
             if ((!dKey && !aKey) || (dKey && aKey))
             {
                 mover.translation.x = 0;
+            }
+
+            bool qKey = Input.GetKey(KeyCode.Q);
+            bool eKey = Input.GetKey(KeyCode.E);
+
+            if (qKey)
+            {
+                mover.translation.z = 1;
+            }
+            if (eKey)
+            {
+                mover.translation.z = -1;
+            }
+            if ((!qKey && !eKey) || (qKey && eKey))
+            {
+                mover.translation.z = 0;
             }
         }
     }

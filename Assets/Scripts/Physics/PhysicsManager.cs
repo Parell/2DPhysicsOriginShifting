@@ -231,6 +231,12 @@ namespace Decel
                         bodyData.position = (Vector2d)(body.rb.position + body.rb.velocity * fixedDeltaTime);
                         bodyData.velocity = (Vector2d)body.rb.velocity;
                     }
+
+                    // float num = Repeat(target - current, 360f);
+                    // if (num > 180f)
+                    // {
+                    //     num -= 360f;
+                    // }
                 }
             }
 
